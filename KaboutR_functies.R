@@ -1,7 +1,7 @@
 # functies inladen
-##
+
 # packages inladen
-pkg <- c("tidyverse","expss","openxlsx","readxl")
+pkg <- c("tidyverse","expss","openxlsx","readxl","stringr")
 new.pkg <- pkg[!(pkg %in% installed.packages())]
 if (length(new.pkg)) {install.packages(new.pkg, repos = "http://cran.rstudio.com")}
 invisible(capture.output(lapply(pkg, require, character.only = TRUE)))
@@ -73,45 +73,54 @@ OpenSurveydata <- function(fname=NULL, filterexpressie=NULL){
   
   
   
-  df_xl <<- readxl::read_xlsx(fname, sheet = 1) %>%  select(-"_will_be_deleted_")
-  codeplan <<- readxl::read_xlsx(fname, sheet = 2)
+  df_xl <- readxl::read_xlsx(fname, sheet = 1) %>%  select(-"_will_be_deleted_")
+  codeplan <- readxl::read_xlsx(fname, sheet = 2)
   
   if(missing(filterexpressie)){
     # doe niks
   } else {
     # lst <- as.list(match.call())
-    df_xl <<- df_xl %>% filter(UQ(rlang::parse_quosure(filterexpressie)))
+    df_xl <- df_xl %>% filter(UQ(rlang::parse_quosure(filterexpressie)))
     
   }
   
   # data labelen
   for (i in 1:ncol(df_xl)){
     if (is.na(codeplan$Type[i]) || codeplan$Type[i] == 'MultipleChoice' ){
-      var_lab(df_xl[i]) <<- paste0(codeplan$Question[i],"|",codeplan$`Choice / Column`[i])
+      var_lab(df_xl[i]) <- paste0(codeplan$Question[i],"|",codeplan$`Choice / Column`[i])
       
     } else {
-      var_lab(df_xl[i]) <<- codeplan$Question[i]
+      var_lab(df_xl[i]) <- codeplan$Question[i]
       if (codeplan$Type[i]=="Matrix" & is.na(codeplan$Question[i])){
-        var_lab(df_xl[i]) <<- codeplan$Question[i-1]
-        codeplan$Question[i] <<- codeplan$Question[i-1]
+        var_lab(df_xl[i]) <- codeplan$Question[i-1]
+        codeplan$Question[i] <- codeplan$Question[i-1]
       }  #toegevoegd  als matrix en Question="" dan overnemen van de vorige
     }
     
-    x <- strsplit(codeplan$Values[i], split="[{:}]") %>% unlist %>% str_remove_all("\n") %>% 
-      str_replace_all('#N/A', '999999') #tijdelijk. Kijken wat de echte waarde is.
-    x <- x[-c(1,which(x==', '))]
+    # x <- strsplit(codeplan$Values[i], split="[{:}]") %>% unlist %>% str_remove_all("\n") %>% str_replace_all('#N/A', '999999') #tijdelijk. Kijken wat de echte waarde is.
+    # x <- x[-c(1,which(x==', '))]
+    # 
     
-    lab <- "\n"
-    
-    if (length(x)>0 & codeplan$`Data Type`[i]=="Number") {
+    if (!is.na(codeplan$Values[i]) &	codeplan$Variable[i] != "Language" ){ 
       
-      for (n in 1:(length(x)/2) ){lab <- append(lab,paste(x[(n*2)-1],x[n*2], "\n"))}  
-    }
-    val_lab(df_xl[i]) <<- num_lab(lab)
+    lab <- c("\n", stringr::str_extract_all(codeplan$Values[i], "(?<=\\{)[^{}]+(?=\\})") %>% 
+      unlist() %>% 
+      str_replace(":"," ") %>% str_remove_all("\n") %>% str_replace_all('#N/A', '999999') %>% 
+      paste("\n")  ) #Is deze beter in staat om te labelen
+    
+    # lab <- "\n"
+    # 
+    # if (length(x)>0 & codeplan$`Data Type`[i]=="Number") {
+    #   
+    #   for (n in 1:(length(x)/2) ){lab <- append(lab,paste(x[(n*2)-1],x[n*2], "\n"))}  
+    # }
+    
+    val_lab(df_xl[i]) <- num_lab(lab)}
     
   }
   
-  
+df_xl <<- df_xl
+codeplan <<- codeplan
 }
 
 
