@@ -86,7 +86,8 @@ OpenSurveydata <- function(fname=NULL, filterexpressie=NULL){
   
   # data labelen
   for (i in 1:ncol(df_xl)){
-    if (is.na(codeplan$Type[i]) || codeplan$Type[i] == 'MultipleChoice' ){
+     if (is.na(codeplan$Type[i]) || codeplan$Type[i] == 'MultipleChoice'  ){ 
+    
       var_lab(df_xl[i]) <- paste0(codeplan$Question[i],"|",codeplan$`Choice / Column`[i])
       
     } else {
@@ -230,9 +231,10 @@ KaboutR <- function(){
       } else {
         # Dataset samenstellen
         df <- df_xl %>% select(starts_with(paste0(q,"_"))  & !ends_with("_text"))
+        
         df <- df %>% drop_na()
-        n=nrow(df)
-        text <- paste0(q," - " , gsub("[|].*", "",var_lab(df[1]))," (N=",n ,") (Meerdere antwoorden mogelijk)")
+        aantal=nrow(df)
+        text <- paste0(q," - " , gsub("[|].*", "",var_lab(df[1]))," (N=",aantal ,") (Meerdere antwoorden mogelijk)")
         # figuur maken en wegschrijven
         hoogte=(length(df)/2.66666+2) %>% round()
         xl_write(text, wb, figurensheet, row=rij, col= 1) # Schijf naam naar excel
@@ -256,16 +258,17 @@ KaboutR <- function(){
       q <- codeplan$Variable[i]
       df <- df_xl %>% select(q)
       df <- df %>% drop_na()
-      n=nrow(df)
-      text <- paste0(q," - " , gsub("[|].*", "",codeplan$Question[i])," (N=", n,")")
+      aantal=nrow(df)
+      text <- paste0(q," - " , gsub("[|].*", "",codeplan$Question[i])," (N=", aantal,")")
       # qn <- paste0(q, " (N=", nrow(df %>% drop_na()),")")#correctie op aantal rijen: NA er uit 
       list_of_tables[[q]] <- cro_cpct(df, total_row_position ="none") %>% #rename(!!quo_name(text) := 1, '#%'=2) %>%   #variabele naam in de kop
         rename(' ' = 1, '#%'=2) %>%
         mutate(across(2:last_col(), ~ (.x)/100)) %>%  
         set_caption(text)
       print(q)
-    } else if (codeplan$Type[i]=='Matrix' & codeplan$`Data Type`[i]=='Number') { 
-      #matrix-----
+    
+    } else if (codeplan$Type[i]=='Matrix' & codeplan$`Data Type`[i]=='Number' & codeplan$Values[i] != "{0:unchecked}, {1:checked}" ) { 
+      #Reguliere matrix-----
       q <- codeplan$`Question Variable`[i]
       if (q %in% algedaan ){
         # print("skip")
@@ -273,10 +276,14 @@ KaboutR <- function(){
         
         item <- codeplan %>% filter(`Question Variable`==q & `Data Type`=="Number") %>% pull(Row) #Toegevoegd: & `Data Type`=="Number" 
         df <- df_xl %>% select(starts_with(paste0(q,"_"))  & !ends_with("_text"))
-        df <- df %>% drop_na()
-        n=nrow(df)
+        
+        # df <- df %>% drop_na()
+        # aantal=nrow(df)
+        cnt <- lapply(df, function(x) sum(!is.na(x))) %>% unlist()
+        aantal=paste0(min(cnt),"-",max(cnt)) #aantal kan per variabele verschillen. Hier de min en max.
+        
         # qn <- paste0(q, " (N=", nrow(df),")")
-        text <- paste0(q," - " , gsub("[|].*", "",codeplan$Question[i])," (N=", n,")")
+        text <- paste0(q," - " , gsub("[|].*", "",codeplan$Question[i])," (N=", aantal,")")
         # text <- paste0(q," - " , gsub("[|].*", "",var_lab(df[1]))," (N=", nrow(df),")")
         
         
@@ -296,6 +303,43 @@ KaboutR <- function(){
           set_caption(text)
         algedaan <- append(algedaan,q)
         print(q)
+      }
+    }  else if (codeplan$Type[i]=='Matrix' & codeplan$`Data Type`[i]=='Number' & codeplan$Values[i]=="{0:unchecked}, {1:checked}" ) { 
+      #MR matrix NIEUW----- 
+      q <- codeplan$`Question Variable`[i]
+      if (q %in% algedaan ){
+        # print("skip")
+        } else {
+        
+        
+        df <- df_xl %>% select(starts_with(paste0(q,"_"))  & !ends_with("_text")) #df filteren
+        codeplan_select <- codeplan %>% filter(str_starts(Variable,q) & !str_ends(Variable,"_text") )  #codeplan op dezelfde wijze filteren 
+        # labelen
+        
+        for (l in 1: ncol(df)) {
+          var_lab(df[l]) <- paste0(codeplan_select$Question[l],"|",codeplan_select$Row[l],"|",codeplan_select$`Choice / Column`[l])
+          }
+        
+        # kijken of we die in stukjes kunnen hakken 
+        groepjes <- 
+          names(df) %>% str_remove(paste0(q,"_")) %>% 
+          str_extract(".+?(?=_)") %>% unique() %>% 
+          str_split_fixed("_",n=2) %>% as_tibble() %>% pull(1)
+        
+        for (groepje in groepjes) {
+          df_select <- df %>% select(starts_with(paste0(q,"_",groepje))) %>% drop_na() 
+          aantal=nrow(df_select)
+          text <- paste0(q,"_",groepje," - " , gsub("[|].*", "",var_lab(df_select[1]))," (N=",aantal ,") (Meerdere antwoorden mogelijk)")  
+          list_of_tables[[paste0(q,"_",groepje)]] <- df_select %>% 
+            mrtabel() %>% 
+            rename(' ' = 1) %>%
+            mutate(across(2:last_col(), ~ (.x)/100)) %>%  
+            set_caption(text)
+          
+          }
+        algedaan <- append(algedaan,q) 
+        print(q)
+      
       }
     }
     
